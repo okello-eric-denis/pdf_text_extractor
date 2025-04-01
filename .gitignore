@@ -1,0 +1,5 @@
+# Ignore secrets.toml
+.streamlit/secrets.toml
+
+# Ignore the virtual environment folder
+venv/
