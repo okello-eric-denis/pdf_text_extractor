@@ -1,5 +1,9 @@
-# Ignore secrets.toml
-.streamlit/secrets.toml
-
-# Ignore the virtual environment folder
 venv/
+.env/
+
+# Ignore logs and database files
+*.log
+*.sqlite3
+
+# Ignore Streamlit Cloud secrets
+.secrets.toml
