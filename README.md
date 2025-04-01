@@ -35,4 +35,3 @@ Perfect for users needing to:
 2. **Supabase Account** (for user auth/storage)  
 3. **Streamlit** (`pip install streamlit`)  
 
-### Installation
