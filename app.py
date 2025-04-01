@@ -1,5 +1,5 @@
 import streamlit as st
-import fitz  # PyMuPDF
+import fitz 
 import pandas as pd
 import datetime
 from supabase import create_client, Client
@@ -13,17 +13,39 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 # --- Authentication Functions ---
-def register_user(email: str, password: str):
+def register_user(email: str, password: str, firstname: str, lastname: str):
     try:
-        response = supabase.auth.sign_up({"email": email, "password": password})
-        return response
+        # Perform sign-up
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "firstname": firstname,
+                    "lastname": lastname
+                }
+            }
+        })
+
+        # Access attributes directly
+        if response.error:
+            return f"Registration failed: {response.error.message}" 
+        if response.user:
+            return "Registration successful! Check your email for verification." 
+
     except Exception as e:
-        return str(e)
+        return f"{str(e)}"
+
 
 def login_user(email: str, password: str):
     try:
         auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         st.session_state.auth = auth_response
+        
+          # Fetch user metadata explicitly
+        user_data = supabase.auth.get_user()
+        st.session_state.user_metadata = user_data.user.user_metadata
+        
     except Exception as e:
         st.error(f"Login failed: {str(e)}")
 
@@ -44,38 +66,35 @@ def fetch_pdf_records():
     result = supabase.table("parsed_leases").select("*").execute()
     return result.data
 
-
-# def fetch_pdf_records(user_id: str):
-#     response = supabase.table("parsed_leases").select("*").eq("user_id", user_id).execute()
-#     return response.data if response.data else []
-
-# records = fetch_pdf_records(user_id)  # Fetch only this user's records
-
-
 # --- Authentication UI ---
 if "auth" not in st.session_state:
     st.title("PDF text Extractor")
-    st.text("Please signin to access APP !")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    st.text("Please signin or register to access APP !")
     has_account = st.checkbox("I have an existing account...")
 
     if has_account:
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
         if st.button("Login", use_container_width=True):
             login_user(email, password)
+        
     else:
-        if st.button("Register", use_container_width=True):
-            response = register_user(email, password)
+         firstname = st.text_input("First Name")
+         lastname = st.text_input("Last Name")
+         email = st.text_input("Email")
+         password = st.text_input("Password", type="password")
+         if st.button("Register", use_container_width=True):
+            response = register_user(email, password, firstname, lastname)
             if isinstance(response, dict):
                 st.success("Check your email for verification!")
             else:
                 st.error(f"Registration failed: {response}")
-    
     st.stop()
-
+    
 # --- Sidebar Logout ---
+name = st.session_state.user_metadata.get('firstname', 'Unknown')
 st.sidebar.header("User Actions")
-st.sidebar.info("Logged in as " + st.session_state.auth.user.email)
+st.sidebar.info(f"Logged in as {name}")
 st.sidebar.button("Log out", on_click=logout_user)
 user = st.session_state.auth.user
 

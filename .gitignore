@@ -1,9 +1,8 @@
 venv/
-.env/
-
 # Ignore logs and database files
 *.log
 *.sqlite3
 
 # Ignore Streamlit Cloud secrets
+.streamlit
 .secrets.toml
