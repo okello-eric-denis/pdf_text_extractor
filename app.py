@@ -3,13 +3,73 @@ import fitz
 import pandas as pd
 import datetime
 from supabase import create_client, Client
+from openai import OpenAI
+import json
+client = OpenAI()
+
 
 # --- CONFIGURATION ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# openai function
+def json_data(extracted_text: str):
+    try: 
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "structure_pdf_content",
+                    "description": "Convert unstructured text into structured JSON format",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Document title"},
+                            "sections": {"type": "array", "items": {"type": "string", "description": "Section headings"}},
+                            "key_points": {"type": "array", "items": {"type": "string", "description": "Key points"}},
+                            "keywords": {"type": "array", "items": {"type": "string", "description": "Keywords"}},
+                            "summary": {"type": "string", "description": "Brief summary"}
+                        },
+                        "required": ["title", "sections", "key_points", "keywords", "summary"]
+                    }
+                }
+            }
+        ]
+        
+        messages = [
+            {
+                "role": "system", 
+                "content": """Convert unstructured text into structured JSON with:
+                      - title
+                      - sections (array)
+                      - key_points (array)
+                      - keywords (array)
+                      - summary"""
+                    },
+            {
+                "role": "user", 
+                "content": extracted_text
+                }
+                    ]
+        response = client.chat.completions.create(
+              model="gpt-3.5-turbo",
+              messages=messages,
+              tools=tools,
+              max_tokens=1000,
+              tool_choice="auto"
+               )
+        if response and response.choices and response.choices[0].message.tool_calls:
+            structured_data = response.choices[0].message.tool_calls[0].function.arguments
+            return json.loads(structured_data)  
+        else:
+            return {"error": f"Invalid response structure: {response}"}
+
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # --- Authentication Functions ---
@@ -109,7 +169,7 @@ with col1:
 
 with col2:
     st.caption("Download Options")
-    download_format = st.radio("Format:", ["TXT", "CSV"], label_visibility="collapsed")
+    download_format = st.radio("Format:", ["TXT", "CSV", "AI JSON SUMMARY"], label_visibility="collapsed")
 
 if uploaded_file:
     with st.spinner("🔍 Extracting text..."):
@@ -120,12 +180,48 @@ if uploaded_file:
         
 # --- Show extracted Text
         st.text_area("Extracted Content", extracted_text, height=300)
+        
+ # --- Download Button Section ---
+if download_format == "TXT":
+    # Plain text
+    st.download_button(
+        label="⬇️ Download as Text",
+        data=extracted_text,
+        file_name=f"{uploaded_file.name.split('.')[0]}.txt",
+        mime="text/plain"
+    )
+elif download_format == "CSV":
+    # CSV
+    csv_data = pd.DataFrame({"Text": [extracted_text]}).to_csv(index=False)
+    st.download_button(
+        label="⬇️ Download as CSV",
+        data=csv_data,
+        file_name=f"{uploaded_file.name.split('.')[0]}.csv",
+        mime="text/csv"
+    )
+elif download_format == "AI JSON SUMMARY":
+    # AI Integration Section for JSON Summary
+    with st.spinner("🤖 Structuring content..."):
+        structured_data = json_data(extracted_text)
+    
+    if 'error' in structured_data:
+        st.error(f"AI Processing Failed: {structured_data['error']}")
+    else:
+        st.success("✅ Content Restructured Successfully!")
+          # Display structured JSON
+        json_preview = st.checkbox("I would like to preview AI Json Summary?")
+        if json_preview:
+            st.json(structured_data) 
+                   
+        # Provide download option for JSON summary
+        json_output = json.dumps(structured_data, indent=2)
+        st.download_button(
+            label="⬇️ Download as AI JSON Summary",
+            data=json_output,
+            file_name=f"{uploaded_file.name.split('.')[0]}_summary.json",
+            mime="application/json"
+        )
 
-        if download_format == "TXT":
-            st.download_button("⬇️ Download as Text", data=extracted_text, file_name=f"{uploaded_file.name.split('.')[0]}.txt", mime="text/plain")
-        else:
-            csv_data = pd.DataFrame({"Text": [extracted_text]}).to_csv(index=False)
-            st.download_button("⬇️ Download as CSV", data=csv_data, file_name=f"{uploaded_file.name.split('.')[0]}.csv", mime="text/csv")
             
 records = st.checkbox("I would like to see my upload history?")
 if records:
