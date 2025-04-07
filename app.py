@@ -217,21 +217,10 @@ if "auth" not in st.session_state:
     if has_account:
         email = st.text_input("Email")
         password = st.text_input("Password", type="password")
-        col1, col2 = st.columns([1,1])
-        with col1:
-            if st.button("Login", use_container_width=True):
-                login_user(email, password)
-                if st.session_state.auth:
-                    display_app_content()
-                else:
-                    st.error("Invalid credentials!")
-        with col2:
-            if st.button("Sign in with Google", use_container_width=True):
-                response = sign_in_with_google()
-        # if st.button("Login", use_container_width=True):
-        #     login_user(email, password)
-        #     if st.session_state.auth:
-        #         display_app_content()
+        if st.button("Login", use_container_width=True):
+            login_user(email, password)
+            if st.session_state.auth:
+                display_app_content()
 
 
     else:
