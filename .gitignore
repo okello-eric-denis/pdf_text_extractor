@@ -8,3 +8,4 @@ venv/
 .secrets.toml
 test.txt
 results.json
+__pycache__
