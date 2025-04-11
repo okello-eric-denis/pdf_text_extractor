@@ -1,9 +1,6 @@
 import streamlit as st
 import fitz
 import pandas as pd
-import datetime
-from supabase import create_client, Client
-from openai import OpenAI
 from components.openai_functions import json_data
 from components.auth import register_user, sign_in_with_google, login_user,logout_user
 from components.database import insert_pdf_record, fetch_pdf_records
@@ -107,4 +104,3 @@ else:
     st.sidebar.info(f"Logged in as {name}")
     st.sidebar.button("Log out", on_click=logout_user)
     display_app_content()
-
