@@ -3,3 +3,4 @@ pymupdf
 pandas
 supabase
 openai
+streamlit_option_menu
