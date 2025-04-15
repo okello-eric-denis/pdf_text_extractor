@@ -64,6 +64,12 @@ def packages():
         .plan-button {
             flex-grow: 0;
             margin-top: auto;
+            align-items:center
+        }
+        .plan-border {
+            border-bottom: 1px solid #ddd;
+            margin-top: 10px;
+            padding-top: 5px;
         }
     </style>
     """
@@ -88,6 +94,7 @@ def packages():
             </div>
             <div class="plan-button">
                 <button class="btn btn-primary" onclick="alert('You have selected the Free plan!')">Subscribe</button>
+                <div class="plan-border"></div>
             </div>
         </div>
         """,
@@ -112,6 +119,7 @@ def packages():
             </div>
             <div class="plan-button">
                 <button class="btn btn-primary" onclick="alert('You have selected the Standard plan!')">Subscribe</button>
+                <div class="plan-border"></div>
             </div>
         </div>
         """,
@@ -136,6 +144,7 @@ def packages():
             </div>
             <div class="plan-button">
                 <button class="btn btn-primary" onclick="alert('You have selected the Premium plan!')">Subscribe</button>
+                <div class="plan-border"></div>
             </div>
         </div>
         """,
@@ -160,6 +169,7 @@ def packages():
             </div>
             <div class="plan-button">
                 <button class="btn btn-primary" onclick="alert('You have selected the Enterprise plan!')">Subscribe</button>
+                <div class="plan-border"></div>
             </div>
         </div>
         """,

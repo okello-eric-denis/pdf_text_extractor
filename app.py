@@ -4,6 +4,7 @@ from streamlit_option_menu import option_menu
 from components.auth import login_user, logout_user, register_user, sign_in_with_google
 from components.pdf_extractor import display_app_content
 from components.pricing import packages
+from new import pricing
 
 # Handle OAuth redirect from Google
 query_params = st.query_params
@@ -23,7 +24,7 @@ if "auth" not in st.session_state:
     )
     if selection == "HOME":
         st.title("Home page")
-        packages()
+        pricing()
     if selection == "PRICING":
         packages()
 
