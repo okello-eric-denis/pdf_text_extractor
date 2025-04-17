@@ -5,11 +5,19 @@ from supabase import Client, create_client
 
 from components.pdf_extractor import display_app_content
 from components.pricing import packages
+from utils.session import get_user_details
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Initialize the Supabase client only once and store it in session state
+if "supabase" not in st.session_state:
+    st.session_state.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+st.set_page_config(
+    layout="centered",
+    page_title="Home",
+    page_icon="🌍",
+)
 
 
 def main():
@@ -24,9 +32,22 @@ def main():
     # If no session, show a login prompt
     if not session:
         st.info("Please log in with your Google account to continue.")
-
     else:
         # When the User is logged in.
+        with st.sidebar:
+            user_info = get_user_details(session)
+            st.session_state.user_info = user_info
+            # user_info = session.get("user", {})
+            user_email = user_info.get("email", "unknown")
+            user_name = (
+                user_info.get("user_metadata", {}).get("full_name")
+                or user_info.get("user_metadata", {}).get("name")
+                or user_email
+            )
+            st.success(f"✅ Logged in as: `{user_name}`")
+            logout_button()
+
+        # Main APP
         selection = option_menu(
             menu_title=None,
             options=["HOME", "PRICING"],
@@ -38,17 +59,6 @@ def main():
             display_app_content()
         if selection == "PRICING":
             packages()
-        # Logged-in view
-        with st.sidebar:
-            user_info = session.get("user", {})
-            user_email = user_info.get("email", "unknown")
-            user_name = (
-                user_info.get("user_metadata", {}).get("full_name")
-                or user_info.get("user_metadata", {}).get("name")
-                or user_email
-            )
-            st.success(f"✅ Logged in as: `{user_name}`")
-            logout_button()
 
 
 if __name__ == "__main__":
