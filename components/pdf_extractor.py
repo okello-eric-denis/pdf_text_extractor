@@ -29,6 +29,7 @@ def display_app_content():
     st.sidebar.write(f"**Plan:** {subscription['plan'].capitalize()}")
     st.sidebar.write(f"**Uploads:** {upload_count}/{subscription['upload_limit']}")
     st.sidebar.progress(upload_count / subscription["upload_limit"])
+    st.sidebar.write("**Valid Until:**")
 
     col1, col2 = st.columns([3, 1])
 
