@@ -14,9 +14,9 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 if "supabase" not in st.session_state:
     st.session_state.supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 st.set_page_config(
-    layout="centered",
+    layout="wide",
     page_title="Home",
-    page_icon="🌍",
+    page_icon="🛂",
 )
 
 
