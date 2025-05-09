@@ -1,332 +1,86 @@
-import re
+import base64
 
-import fitz  # PyMuPDF
 import streamlit as st
-from PIL import Image, ImageDraw
+import streamlit.components.v1 as components
+from pdf2image import convert_from_bytes
+from PyPDF2 import PdfReader
 
-FIELDS = {
-    "Applicant Name": r"Applicant Name\s*([A-Z\s]+)",
-    "Date of Birth": r"Date Of Birth\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})",
-    "Email": r"Email\s*([\w\.\-+]+@[\w\.\-]+)",
-    "NIN": r"\bNIN\s*([A-Z0-9]+)",
-    "Phone Number": r"Telephone Number\s*([\+\d\s]+)",
-    "Type of Passport": r"Type of Passport\s*([\w\s]+)",
-}
+st.set_page_config(layout="wide", page_title="PDF Text Highlighter")
 
+st.title("Interactive PDF Text Highlighter")
 
-def extract_fields_from_document(doc):
-    extracted = {}
-    for field, pattern in FIELDS.items():
-        found = False
-        for i, page in enumerate(doc):
-            text = page.get_text()
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                extracted[field] = {"value": match.group(1).strip(), "page": i + 1}
-                found = True
-                break
-        if not found:
-            extracted[field] = {"value": "", "page": None}
-    return extracted
+# --- File Upload ---
+pdf_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
+if pdf_file:
+    # --- Extract PDF as image (first page only for demo) ---
+    images = convert_from_bytes(pdf_file.read(), first_page=1, last_page=1)
+    img = images[0]
+    img.save("temp_page.png")
+    with open("temp_page.png", "rb") as img_file:
+        img_bytes = img_file.read()
+    img_base64 = base64.b64encode(img_bytes).decode()
 
-def find_field_position(page, field_label):
-    text_instances = page.search_for(field_label)
-    return text_instances[0] if text_instances else None
+    # --- Extract text ---
+    pdf_file.seek(0)
+    reader = PdfReader(pdf_file)
+    text = reader.pages[0].extract_text()
+    lines = text.split("\n") if text else []
 
+    # --- Session state for highlight ---
+    if "highlighted" not in st.session_state:
+        st.session_state["highlighted"] = None
 
-def create_highlighted_image(page, rect, zoom=2.5):
-    mat = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=mat)
-    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    if rect:
-        draw = ImageDraw.Draw(img)
-        x0 = int(rect.x0 * zoom)
-        y0 = int(rect.y0 * zoom)
-        x1 = int(rect.x1 * zoom)
-        y1 = int(rect.y1 * zoom)
-        draw.rectangle([x0, y0, x1, y1], outline="red", width=5)
-    return img
+    col1, col2 = st.columns(2)
 
+    # --- Left: PDF Image ---
+    with col1:
+        st.markdown("#### PDF Page (Image)")
+        # Overlay highlight using a transparent div if a line is selected
+        # (In a real app, you'd map text to image coordinates. Here, we just overlay a semi-transparent box for demo.)
+        highlight_style = ""
+        if st.session_state["highlighted"] is not None:
+            highlight_style = """
+            <div style='
+                position: absolute;
+                top: 50px; left: 0;
+                width: 100%; height: 40px;
+                background: rgba(255,255,0,0.4);
+                z-index: 10;
+            '></div>
+            """
+        html_img = f"""
+        <div style='position:relative; display:inline-block;'>
+            <img src='data:image/png;base64,{img_base64}' style='max-width:100%; border:1px solid #ccc;'/>
+            {highlight_style if st.session_state["highlighted"] is not None else ""}
+        </div>
+        """
+        st.markdown(html_img, unsafe_allow_html=True)
 
-def extract_value_by_label(doc, label):
-    for i, page in enumerate(doc):
-        text = page.get_text()
-        pattern = rf"{re.escape(label)}\s*[:\-]?\s*([^\n]+)"
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip(), i + 1
-    return "", None
+    # --- Right: Extracted Text with clickable lines ---
+    with col2:
+        st.markdown("#### Extracted Text (Click to Highlight)")
+        # Render each line as a button for highlight
+        for idx, line in enumerate(lines):
+            key = f"line_{idx}"
+            # Highlight the selected line
+            if st.session_state["highlighted"] == idx:
+                st.markdown(
+                    f"<div style='background:yellow; padding:4px; margin-bottom:2px; border-radius:3px; cursor:pointer;'>{line}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                if st.button(line, key=key):
+                    st.session_state["highlighted"] = idx
 
+        # Button to clear highlight
+        if st.session_state["highlighted"] is not None:
+            if st.button("Clear Highlight"):
+                st.session_state["highlighted"] = None
 
-st.set_page_config(
-    layout="wide",
-    page_title="Passport PDF Field Extractor & Highlighter",
-    page_icon="🛂",
-)
-st.title("Passport PDF Field Extractor & Highlighter (Whole Document Search)")
+    # --- JS for syncing highlight (optional, for future expansion) ---
+    # For a real two-way highlight between PDF and text, you'd need a custom Streamlit component with JS/PDF.js.
+    # This demo keeps everything in Python for simplicity.
 
-uploaded_file = st.file_uploader("Upload Passport PDF", type="pdf")
-if not uploaded_file:
-    st.info("Please upload a PDF file to extract fields.")
-    st.stop()
-
-doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-num_pages = len(doc)
-
-# --- Session State for Highlight ---
-if "highlight_field" not in st.session_state:
-    st.session_state.highlight_field = None
-if "highlight_rect" not in st.session_state:
-    st.session_state.highlight_rect = None
-if "highlight_page" not in st.session_state:
-    st.session_state.highlight_page = 1
-
-# Extract all fields from the entire document
-all_fields = extract_fields_from_document(doc)
-
-# Layout: PDF on left, fields on right
-col1, col2 = st.columns([0.6, 0.4])
-
-with col2:
-    st.subheader("Extracted & Editable Fields (from whole document)")
-    for field in FIELDS.keys():
-        info = all_fields[field]
-        value = st.text_input(
-            f"{field} (Page {info['page'] if info['page'] else '-'})",
-            info["value"],
-            key=f"input_{field}",
-        )
-        # Highlight button
-        if st.button("Highlight", key=f"btn_{field}"):
-            if info["page"]:
-                st.session_state.highlight_field = field
-                st.session_state.highlight_page = info["page"]
-                page = doc[info["page"] - 1]
-                rect = find_field_position(page, field)
-                st.session_state.highlight_rect = rectimport re
-
-import fitz  # PyMuPDF
-import streamlit as st
-from PIL import Image, ImageDraw
-
-FIELDS = {
-    "Applicant Name": r"Applicant Name\s*([A-Z\s]+)",
-    "Date of Birth": r"Date Of Birth\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})",
-    "Email": r"Email\s*([\w\.\-+]+@[\w\.\-]+)",
-    "NIN": r"\bNIN\s*([A-Z0-9]+)",
-    "Phone Number": r"Telephone Number\s*([\+\d\s]+)",
-    "Type of Passport": r"Type of Passport\s*([\w\s]+)",
-}
-
-
-def extract_fields_from_document(doc):
-    extracted = {}
-    for field, pattern in FIELDS.items():
-        found = False
-        for i, page in enumerate(doc):
-            text = page.get_text()
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                extracted[field] = {"value": match.group(1).strip(), "page": i + 1}
-                found = True
-                break
-        if not found:
-            extracted[field] = {"value": "", "page": None}
-    return extracted
-
-
-def find_field_position(page, field_label):
-    text_instances = page.search_for(field_label)
-    return text_instances[0] if text_instances else None
-
-
-def create_highlighted_image(page, rect, zoom=2.5):
-    mat = fitz.Matrix(zoom, zoom)
-    pix = page.get_pixmap(matrix=mat)
-    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    if rect:
-        draw = ImageDraw.Draw(img)
-        x0 = int(rect.x0 * zoom)
-        y0 = int(rect.y0 * zoom)
-        x1 = int(rect.x1 * zoom)
-        y1 = int(rect.y1 * zoom)
-        draw.rectangle([x0, y0, x1, y1], outline="red", width=5)
-    return img
-
-
-def extract_value_by_label(doc, label):
-    for i, page in enumerate(doc):
-        text = page.get_text()
-        pattern = rf"{re.escape(label)}\s*[:\-]?\s*([^\n]+)"
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip(), i + 1
-    return "", None
-
-
-st.set_page_config(
-    layout="wide",
-    page_title="Passport PDF Field Extractor & Highlighter",
-    page_icon="🛂",
-)
-st.title("Passport PDF Field Extractor & Highlighter (Whole Document Search)")
-
-uploaded_file = st.file_uploader("Upload Passport PDF", type="pdf")
-if not uploaded_file:
-    st.info("Please upload a PDF file to extract fields.")
-    st.stop()
-
-doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-num_pages = len(doc)
-
-# --- Session State for Highlight ---
-if "highlight_field" not in st.session_state:
-    st.session_state.highlight_field = None
-if "highlight_rect" not in st.session_state:
-    st.session_state.highlight_rect = None
-if "highlight_page" not in st.session_state:
-    st.session_state.highlight_page = 1
-
-# Extract all fields from the entire document
-all_fields = extract_fields_from_document(doc)
-
-# Layout: PDF on left, fields on right
-col1, col2 = st.columns([0.6, 0.4])
-
-with col2:
-    st.subheader("Extracted & Editable Fields (from whole document)")
-    for field in FIELDS.keys():
-        info = all_fields[field]
-        value = st.text_input(
-            f"{field} (Page {info['page'] if info['page'] else '-'})",
-            info["value"],
-            key=f"input_{field}",
-        )
-        # Highlight button
-        if st.button("Highlight", key=f"btn_{field}"):
-            if info["page"]:
-                st.session_state.highlight_field = field
-                st.session_state.highlight_page = info["page"]
-                page = doc[info["page"] - 1]
-                rect = find_field_position(page, field)
-                st.session_state.highlight_rect = rect
-
-    st.markdown("---")
-    st.subheader("🔎 Search and Highlight Any Field (whole document)")
-    search_label = st.text_input(
-        "Enter field label (as it appears in the PDF):", key="search_label"
-    )
-    search_value, search_page = "", None
-    if search_label:
-        search_value, search_page = extract_value_by_label(doc, search_label)
-        st.text_input("Value", search_value, key="search_value")
-        if st.button("Highlight Search", key="btn_search"):
-            if search_page:
-                st.session_state.highlight_field = search_label
-                st.session_state.highlight_page = search_page
-                page = doc[search_page - 1]
-                rect = find_field_position(page, search_label)
-                st.session_state.highlight_rect = rect
-
-with col1:
-    # Show the page with the current highlight, or page 1 by default
-    page_num = st.session_state.highlight_page or 1
-    page = doc[page_num - 1]
-    st.subheader(f"PDF Preview (Page {page_num} of {num_pages})")
-    img = create_highlighted_image(page, st.session_state.highlight_rect, zoom=2.5)
-    if st.session_state.highlight_field:
-        st.caption(f"Highlighted: {st.session_state.highlight_field}")
-    st.image(img, use_container_width=True)
-
-    # Pagination buttons (optional)
-    col_pag1, col_pag2, col_pag3, col_pag4, col_pag5 = st.columns([1, 1, 1, 1, 1])
-    with col_pag1:
-        if st.button("⏮️ First", use_container_width=True, disabled=page_num == 1):
-            st.session_state.highlight_page = 1
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag2:
-        if st.button("◀️ Previous", use_container_width=True, disabled=page_num == 1):
-            st.session_state.highlight_page = max(1, page_num - 1)
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag3:
-        st.markdown(
-            f"<div style='text-align:center; font-weight:bold;'>Page {page_num} / {num_pages}</div>",
-            unsafe_allow_html=True,
-        )
-    with col_pag4:
-        if st.button(
-            "Next ▶️", use_container_width=True, disabled=page_num == num_pages
-        ):
-            st.session_state.highlight_page = min(num_pages, page_num + 1)
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag5:
-        if st.button(
-            "Last ⏭️", use_container_width=True, disabled=page_num == num_pages
-        ):
-            st.session_state.highlight_page = num_pages
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-
-
-    st.markdown("---")
-    st.subheader("🔎 Search and Highlight Any Field (whole document)")
-    search_label = st.text_input(
-        "Enter field label (as it appears in the PDF):", key="search_label"
-    )
-    search_value, search_page = "", None
-    if search_label:
-        search_value, search_page = extract_value_by_label(doc, search_label)
-        st.text_input("Value", search_value, key="search_value")
-        if st.button("Highlight Search", key="btn_search"):
-            if search_page:
-                st.session_state.highlight_field = search_label
-                st.session_state.highlight_page = search_page
-                page = doc[search_page - 1]
-                rect = find_field_position(page, search_label)
-                st.session_state.highlight_rect = rect
-
-with col1:
-    # Show the page with the current highlight, or page 1 by default
-    page_num = st.session_state.highlight_page or 1
-    page = doc[page_num - 1]
-    st.subheader(f"PDF Preview (Page {page_num} of {num_pages})")
-    img = create_highlighted_image(page, st.session_state.highlight_rect, zoom=2.5)
-    if st.session_state.highlight_field:
-        st.caption(f"Highlighted: {st.session_state.highlight_field}")
-    st.image(img, use_container_width=True)
-
-    # Pagination buttons (optional)
-    col_pag1, col_pag2, col_pag3, col_pag4, col_pag5 = st.columns([1, 1, 1, 1, 1])
-    with col_pag1:
-        if st.button("⏮️ First", use_container_width=True, disabled=page_num == 1):
-            st.session_state.highlight_page = 1
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag2:
-        if st.button("◀️ Previous", use_container_width=True, disabled=page_num == 1):
-            st.session_state.highlight_page = max(1, page_num - 1)
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag3:
-        st.markdown(
-            f"<div style='text-align:center; font-weight:bold;'>Page {page_num} / {num_pages}</div>",
-            unsafe_allow_html=True,
-        )
-    with col_pag4:
-        if st.button(
-            "Next ▶️", use_container_width=True, disabled=page_num == num_pages
-        ):
-            st.session_state.highlight_page = min(num_pages, page_num + 1)
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
-    with col_pag5:
-        if st.button(
-            "Last ⏭️", use_container_width=True, disabled=page_num == num_pages
-        ):
-            st.session_state.highlight_page = num_pages
-            st.session_state.highlight_rect = None
-            st.session_state.highlight_field = None
+else:
+    st.info("Please upload a PDF file to begin.")
